@@ -1,0 +1,10 @@
+# Placeholder — scripts/fetch_dataset.py OVERWRITES this with absolute paths
+# once the dataset is on disk. Committed so the repo reads cleanly and so a
+# local dry run against a hand-placed datasets/bullet-hole/ tree works without
+# running the fetch step.
+path: ../datasets/bullet-hole
+train: train/images
+val: valid/images
+test: test/images
+nc: 1
+names: [bullet-hole]

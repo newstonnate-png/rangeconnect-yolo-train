@@ -1,0 +1,21 @@
+# Default hyperparameters for scripts/train.py.
+# Every key is overridable by an environment variable with the upper-cased name
+# (MODEL, IMGSZ, EPOCHS, BATCH, PATIENCE, DEVICE, CACHE, RUN_NAME).
+
+# Base weights to fine-tune. YOLO11s = best accuracy/effort for small holes on a
+# CPU-only scoring PC; swap to yolo26n.pt / yolo26s.pt to benchmark the newer
+# NMS-free line, or yolo11n.pt for the fastest option.
+model: yolo11s.pt
+
+# Bullet holes are small; input resolution matters more than model size. 960 is
+# a good default on a 24 GB card; try 1280 if holes are tiny in the cropped
+# zoom-lens frame and VRAM allows.
+imgsz: 960
+
+epochs: 150
+batch: 16          # -1 lets ultralytics auto-pick for the GPU
+patience: 40       # epochs without val improvement before early stop
+device: "0"
+cache: ram         # 1290 images fit in RAM comfortably; big speedup
+
+run_name: rc-bullethole

@@ -1,0 +1,7 @@
+# Scripts run on Linux (Vast.ai). Force LF so CRLF from a Windows checkout
+# never reaches the instance and breaks the shebang / heredocs.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.md   text eol=lf
