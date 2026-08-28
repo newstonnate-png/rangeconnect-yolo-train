@@ -12,15 +12,19 @@ placeholders — fill them in the Vast console, never commit real secrets.
 ## On-start script (Vast "On-start Script" field)
 
 ```
-git clone https://github.com/REPLACE_USER/rangeconnect-yolo-train /workspace/t && bash /workspace/t/scripts/provision.sh
+git clone https://github.com/newstonnate-png/rangeconnect-yolo-train /workspace/t && bash /workspace/t/scripts/provision.sh
 ```
+
+> Private repo — the Vast instance needs read access. Either make the repo public,
+> or use a clone URL with a read-only PAT:
+> `git clone https://<user>:<PAT>@github.com/newstonnate-png/rangeconnect-yolo-train ...`
 
 ## Docker options / env one-liner
 
 Baseline run (pretrain pool only, no fine-tune set yet):
 
 ```
--p 8888:8888 -e OPEN_BUTTON_PORT=8888 -e ROBOFLOW_API_KEY=REPLACE_ME -e PRETRAIN_SOURCES=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/1,roboflow:project-bat-bullet-hole-detection/bullet-hole-object-detection/1 -e FINETUNE_SOURCE= -e HF_TOKEN=REPLACE_ME -e HF_MODEL_REPO=REPLACE_USER/rc-bullet-hole-yolo -e MODEL=yolo11s.pt -e IMGSZ=960 -e EPOCHS=150 -e FINETUNE_EPOCHS=40 -e BATCH=16 -e PATIENCE=40 -e CACHE=ram -e ENABLE_JUPYTER=true -e JUPYTER_TOKEN=REPLACE_ME
+-p 8888:8888 -e OPEN_BUTTON_PORT=8888 -e ROBOFLOW_API_KEY=REPLACE_ME -e PRETRAIN_SOURCES=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/1,roboflow:project-bat-bullet-hole-detection/bullet-hole-object-detection/1 -e FINETUNE_SOURCE= -e HF_TOKEN=REPLACE_ME -e HF_MODEL_REPO=NewstonNate13/rc-bullet-hole-yolo -e MODEL=yolo11s.pt -e IMGSZ=960 -e EPOCHS=150 -e FINETUNE_EPOCHS=40 -e BATCH=16 -e PATIENCE=40 -e CACHE=ram -e ENABLE_JUPYTER=true -e JUPYTER_TOKEN=REPLACE_ME
 ```
 
 In-domain run (after camera frames are labelled as a new Roboflow version, e.g. v2):
