@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Train a YOLO bullet-hole detector and export it to ONNX.
+"""Two-phase YOLO training for the RangeConnect bullet-hole detector, + ONNX export.
 
-Reads defaults from train_config.yaml (repo root); every key can be overridden
-by an environment variable named after the upper-cased key (MODEL, IMGSZ,
-EPOCHS, BATCH, PATIENCE, DEVICE, CACHE, RUN_NAME).
+Phase 1  fine-tune the base weights (MODEL) on datasets/pool/ — the pooled
+         public "what a hole looks like" prior.
+Phase 2  if data/finetune.yaml exists, continue from phase-1 best.pt on
+         datasets/finetune/ (real zoom-lens frames): fewer epochs, lower LR,
+         backbone frozen. Skipped cleanly when there is no fine-tune data —
+         that is the "baseline now" path.
 
-Runs inside the official `ultralytics/ultralytics` image on a Vast.ai GPU
-instance, but works anywhere ultralytics is installed. Outputs land in
-runs/<run_name>/ ; upload_artifacts.py ships them onward.
+Then export the final best.pt to ONNX (opset 12, static, simplified) for
+onnxruntime CPU inference in GunRangeApp3/scoring_app.py.
+
+Defaults come from train_config.yaml; every key is overridable by the
+upper-cased env var (MODEL, IMGSZ, EPOCHS, BATCH, PATIENCE, DEVICE, CACHE,
+RUN_NAME, FINETUNE_EPOCHS).
 """
 from __future__ import annotations
 
@@ -20,9 +26,10 @@ from ultralytics import YOLO
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "train_config.yaml"
-DATA_YAML = REPO_ROOT / "data" / "bullet-hole.yaml"
+POOL_YAML = REPO_ROOT / "data" / "pool.yaml"
+FINETUNE_YAML = REPO_ROOT / "data" / "finetune.yaml"
+RUNS = REPO_ROOT / "runs"
 
-# key -> type coercion. Env var name is the upper-cased key.
 _CASTS = {
     "model": str,
     "imgsz": int,
@@ -32,7 +39,12 @@ _CASTS = {
     "device": str,
     "cache": str,
     "run_name": str,
+    "finetune_epochs": int,
 }
+
+# Augmentation shared by both phases. Bullet holes have no canonical "up", so
+# both flips are safe and double the effective data; mosaic helps tiny objects.
+_AUG = dict(mosaic=1.0, close_mosaic=10, scale=0.5, fliplr=0.5, flipud=0.5, rect=False)
 
 
 def load_config() -> dict:
@@ -47,8 +59,8 @@ def load_config() -> dict:
 
 
 def main() -> int:
-    if not DATA_YAML.exists():
-        print(f"ERROR: {DATA_YAML} not found. Run fetch_dataset.py first.", file=sys.stderr)
+    if not POOL_YAML.exists():
+        print(f"ERROR: {POOL_YAML} not found. Run fetch_dataset.py first.", file=sys.stderr)
         return 1
 
     cfg = load_config()
@@ -57,47 +69,57 @@ def main() -> int:
         print(f"  {k}: {v}")
     print("================================")
 
-    model = YOLO(cfg["model"])
-
-    # Small-object-friendly, orientation-invariant augmentation. Bullet holes
-    # have no canonical "up", so vertical + horizontal flips are safe and
-    # double the effective data. mosaic helps tiny objects; close it for the
-    # last epochs so the model finishes on natural full-frame composition.
-    results = model.train(
-        data=str(DATA_YAML),
+    # ---- phase 1: pooled pretrain ----
+    print("\n### phase 1 — pretrain on datasets/pool/")
+    p1 = YOLO(cfg["model"]).train(
+        data=str(POOL_YAML),
         imgsz=cfg["imgsz"],
         epochs=cfg["epochs"],
         batch=cfg["batch"],
         patience=cfg["patience"],
         device=cfg["device"],
         cache=cfg["cache"],
-        project=str(REPO_ROOT / "runs"),
-        name=cfg["run_name"],
+        project=str(RUNS),
+        name=f"{cfg['run_name']}-pretrain",
         exist_ok=True,
-        mosaic=1.0,
-        close_mosaic=10,
-        scale=0.5,
-        fliplr=0.5,
-        flipud=0.5,
-        rect=False,
         seed=0,
+        **_AUG,
     )
+    best = Path(p1.save_dir) / "weights" / "best.pt"
+    print(f"phase 1 best: {best}")
 
-    save_dir = Path(results.save_dir)
-    best_pt = save_dir / "weights" / "best.pt"
-    print(f"\nBest weights: {best_pt}")
+    # ---- phase 2: in-domain fine-tune ----
+    if FINETUNE_YAML.exists():
+        print("\n### phase 2 — fine-tune on datasets/finetune/")
+        p2 = YOLO(str(best)).train(
+            data=str(FINETUNE_YAML),
+            imgsz=cfg["imgsz"],
+            epochs=cfg["finetune_epochs"],
+            batch=cfg["batch"],
+            patience=max(10, cfg["finetune_epochs"] // 3),
+            device=cfg["device"],
+            cache=cfg["cache"],
+            project=str(RUNS),
+            name=f"{cfg['run_name']}-finetune",
+            exist_ok=True,
+            seed=0,
+            lr0=0.002,      # ~1/5 of the default; the model is already close
+            freeze=10,      # hold the backbone, adapt the head to this lens
+            **_AUG,
+        )
+        best = Path(p2.save_dir) / "weights" / "best.pt"
+        print(f"phase 2 best: {best}")
+    else:
+        print("\n### phase 2 skipped — no data/finetune.yaml (baseline run)")
 
-    # opset 12 + no dynamic axes = widest onnxruntime compatibility on the
-    # CPU-only scoring PC. simplify folds constant nodes for a leaner CPU graph.
-    onnx_path = YOLO(str(best_pt)).export(
-        format="onnx",
-        imgsz=cfg["imgsz"],
-        opset=12,
-        simplify=True,
-        dynamic=False,
+    # ---- export ----
+    print(f"\n### exporting ONNX from {best}")
+    onnx_path = YOLO(str(best)).export(
+        format="onnx", imgsz=cfg["imgsz"], opset=12, simplify=True, dynamic=False
     )
     print(f"ONNX: {onnx_path}")
-    print(f"\nRun dir: {save_dir}")
+    print(f"\nFinal weights: {best}")
+    print(f"Run dir: {best.parent.parent}")
     return 0
 
 

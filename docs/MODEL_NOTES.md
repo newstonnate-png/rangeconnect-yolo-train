@@ -18,6 +18,17 @@ effective rate only needs to be 2–4 FPS.
 run a second job with `MODEL=yolo26n.pt` and compare `mAP50` + real-frame CPU
 latency. Pick the winner for `scoring_app.py`.
 
+## Two-phase training
+
+`scripts/train.py` runs phase 1 on `datasets/pool/` (pooled public data — a
+generic hole-detection prior) then, if `data/finetune.yaml` exists, phase 2 on
+`datasets/finetune/` (real zoom-lens frames on the printed target): fewer epochs
+(`FINETUNE_EPOCHS`, default 40), `lr0=0.002`, `freeze=10` so the backbone holds
+and only the head adapts to this camera. The first run has no fine-tune set and
+phase 2 is skipped — that baseline model is still fine for wiring up
+`scoring_app.py` while the real frames are collected. See
+`ADDING_CAMERA_FRAMES.md`.
+
 ## Input resolution
 
 Bullet holes are small; **resolution matters more than model size**. Defaults to

@@ -17,14 +17,28 @@ git clone https://github.com/REPLACE_USER/rangeconnect-yolo-train /workspace/t &
 
 ## Docker options / env one-liner
 
+Baseline run (pretrain pool only, no fine-tune set yet):
+
 ```
--p 8888:8888 -e OPEN_BUTTON_PORT=8888 -e DATASET_SOURCE=roboflow -e ROBOFLOW_API_KEY=REPLACE_ME -e ROBOFLOW_WORKSPACE=justines-workspace-ls3un -e ROBOFLOW_PROJECT=justines-workspace-ls3un -e ROBOFLOW_VERSION=1 -e HF_TOKEN=REPLACE_ME -e HF_MODEL_REPO=REPLACE_USER/rc-bullet-hole-yolo -e MODEL=yolo11s.pt -e IMGSZ=960 -e EPOCHS=150 -e BATCH=16 -e PATIENCE=40 -e CACHE=ram -e ENABLE_JUPYTER=true -e JUPYTER_TOKEN=REPLACE_ME
+-p 8888:8888 -e OPEN_BUTTON_PORT=8888 -e ROBOFLOW_API_KEY=REPLACE_ME -e PRETRAIN_SOURCES=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/1,roboflow:project-bat-bullet-hole-detection/bullet-hole-object-detection/1 -e FINETUNE_SOURCE= -e HF_TOKEN=REPLACE_ME -e HF_MODEL_REPO=REPLACE_USER/rc-bullet-hole-yolo -e MODEL=yolo11s.pt -e IMGSZ=960 -e EPOCHS=150 -e FINETUNE_EPOCHS=40 -e BATCH=16 -e PATIENCE=40 -e CACHE=ram -e ENABLE_JUPYTER=true -e JUPYTER_TOKEN=REPLACE_ME
 ```
 
-## To benchmark YOLO26n instead
+In-domain run (after camera frames are labelled as a new Roboflow version, e.g. v2):
 
-Change `-e MODEL=yolo26n.pt` (optionally `-e IMGSZ=640`) and re-launch. Artifacts
-land in a separate `<stamp>-yolo26n` folder in the HF model repo.
+```
+... -e FINETUNE_SOURCE=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/2 ...
+```
+
+## Notes
+
+- `PRETRAIN_SOURCES` — comma list. Specs: `roboflow:<ws>/<proj>/<ver>` |
+  `url:<zip/tar.gz>` | `hf:<dataset repo>`. Fill in the real version numbers
+  from the Roboflow dataset pages before launching.
+- To benchmark YOLO26n: `-e MODEL=yolo26n.pt` (optionally `-e IMGSZ=640`).
+  Artifacts land in a separate `<stamp>-yolo26n` folder in the HF model repo.
+- `FINETUNE_SOURCE=` (empty) skips phase 2 — the baseline path.
+- Excluded on purpose: `lonlonago` 9856-image set ($89 paywall), MDPI
+  "shooting cards" set (flatbed scans — wrong domain for a live IP camera).
 
 ## Offer search
 

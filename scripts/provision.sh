@@ -17,18 +17,20 @@ say "run stamp: $RUN_STAMP  |  model: ${MODEL:-<config default>}  |  dataset: ${
 
 # ---- helper deps ----------------------------------------------------------
 # The base image has torch + ultralytics. Add the dataset/artifact clients and
-# JupyterLab for the keep-alive inspection shell.
+# JupyterLab for the keep-alive inspection shell. All three are light pure-python
+# packages, so install unconditionally rather than sniffing the source specs.
 say "installing helper deps"
-pip install -q --no-input huggingface_hub jupyterlab || { say "pip install failed"; exit 1; }
-if [[ "${DATASET_SOURCE:-roboflow}" == "roboflow" ]]; then
-  pip install -q --no-input roboflow || { say "roboflow install failed"; exit 1; }
-fi
+pip install -q --no-input roboflow huggingface_hub jupyterlab || { say "pip install failed"; exit 1; }
 
 # ---- dataset ------------------------------------------------------------------
-say "fetching dataset"
+# Builds datasets/pool/ from PRETRAIN_SOURCES and, if FINETUNE_SOURCE is set,
+# datasets/finetune/ from that. Writes data/pool.yaml (+ data/finetune.yaml).
+say "fetching datasets"
 python scripts/fetch_dataset.py || { say "dataset fetch failed"; exit 1; }
 
 # ---- train + export --------------------------------------------------------
+# Phase 1 pretrains on the pool; phase 2 fine-tunes on the in-domain set when
+# data/finetune.yaml exists; then the final best.pt is exported to ONNX.
 say "starting training"
 python scripts/train.py
 train_rc=$?

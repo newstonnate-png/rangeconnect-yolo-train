@@ -1,21 +1,32 @@
 # Default hyperparameters for scripts/train.py.
 # Every key is overridable by an environment variable with the upper-cased name
-# (MODEL, IMGSZ, EPOCHS, BATCH, PATIENCE, DEVICE, CACHE, RUN_NAME).
+# (MODEL, IMGSZ, EPOCHS, BATCH, PATIENCE, DEVICE, CACHE, RUN_NAME,
+# FINETUNE_EPOCHS).
 
 # Base weights to fine-tune. YOLO11s = best accuracy/effort for small holes on a
 # CPU-only scoring PC; swap to yolo26n.pt / yolo26s.pt to benchmark the newer
-# NMS-free line, or yolo11n.pt for the fastest option.
+# NMS-free line, or yolo11n.pt for the fastest option. See docs/MODEL_NOTES.md.
 model: yolo11s.pt
 
 # Bullet holes are small; input resolution matters more than model size. 960 is
 # a good default on a 24 GB card; try 1280 if holes are tiny in the cropped
-# zoom-lens frame and VRAM allows.
+# zoom-lens frame and VRAM allows. Keep this equal at train and inference —
+# the ONNX export bakes it in.
 imgsz: 960
 
-epochs: 150
-batch: 16          # -1 lets ultralytics auto-pick for the GPU
-patience: 40       # epochs without val improvement before early stop
+epochs: 150          # phase 1: pooled-pretrain epochs
+finetune_epochs: 40  # phase 2: in-domain fine-tune epochs (skipped if no finetune set)
+batch: 16            # -1 lets ultralytics auto-pick for the GPU
+patience: 40         # phase-1 early-stop patience
 device: "0"
-cache: ram         # 1290 images fit in RAM comfortably; big speedup
+cache: ram           # the pool fits in RAM comfortably; big speedup
 
 run_name: rc-bullethole
+
+# --- dataset sources (usually set as env vars in the Vast one-liner) ---------
+# PRETRAIN_SOURCES: comma-separated specs merged into datasets/pool/.
+#   roboflow:<workspace>/<project>/<version> | url:<zip/tar.gz> | hf:<repo id>
+# FINETUNE_SOURCE:  one spec -> datasets/finetune/ ; leave empty for a baseline run.
+# Example:
+#   PRETRAIN_SOURCES=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/1,roboflow:project-bat-bullet-hole-detection/bullet-hole-object-detection/1
+#   FINETUNE_SOURCE=roboflow:justines-workspace-ls3un/justines-workspace-ls3un/2
