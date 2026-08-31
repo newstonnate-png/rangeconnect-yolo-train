@@ -72,8 +72,11 @@ def _download_roboflow(rest: str, dest: Path) -> Path:
     fmt = os.environ.get("ROBOFLOW_FORMAT", "yolov8")
     print(f"  roboflow {workspace}/{project} v{version} as {fmt}")
     rf = Roboflow(api_key=api_key)
+    # overwrite=True is required: fetch_dataset pre-creates `dest`, and the
+    # roboflow SDK silently skips the download when `location` already exists
+    # unless overwrite is set (Version.download defaults overwrite=False).
     ds = rf.workspace(workspace).project(project).version(version).download(
-        fmt, location=str(dest)
+        fmt, location=str(dest), overwrite=True
     )
     return Path(ds.location)
 
