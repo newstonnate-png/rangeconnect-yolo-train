@@ -142,6 +142,80 @@ def normalize_layout(root: Path) -> None:
         (root / split / "labels").mkdir(parents=True, exist_ok=True)
 
 
+def _read_class_names(root: Path) -> list[str]:
+    """Pull the ordered class-name list from a YOLO export's data.yaml.
+
+    Handles `names: [a, b]` and `names: {0: a, 1: b}`. Returns [] when there is
+    no data.yaml or no names key — callers then treat every class as keep+collapse.
+    """
+    try:
+        import yaml
+    except ImportError:  # pragma: no cover - yaml ships with ultralytics
+        return []
+    for cand in ("data.yaml", "data.yml"):
+        p = root / cand
+        if not p.exists():
+            continue
+        doc = yaml.safe_load(p.read_text()) or {}
+        names = doc.get("names")
+        if isinstance(names, dict):
+            return [str(names[k]) for k in sorted(names, key=lambda x: int(x))]
+        if isinstance(names, list):
+            return [str(n) for n in names]
+    return []
+
+
+def collapse_labels(root: Path, drop_name_substrings: "list[str] | None" = None) -> tuple[int, int]:
+    """Rewrite every YOLO label under root/{train,valid,test}/labels to a single
+    class 0, so a multi-class export can join a single-class ('bullet-hole') pool.
+
+    Boxes whose class *name* (looked up in the export's data.yaml `names`)
+    contains any string in `drop_name_substrings` (case-insensitive) are removed
+    entirely — e.g. 'Target', 'black_contour', 'sticker'. Every surviving box is
+    remapped to class id 0.
+
+    Returns (label_files_rewritten, boxes_dropped).
+    """
+    drops = [s.strip().lower() for s in (drop_name_substrings or []) if s.strip()]
+    names = _read_class_names(root)
+    drop_ids = {
+        i for i, n in enumerate(names)
+        if any(s in n.lower() for s in drops)
+    }
+    if names and drop_ids:
+        print(
+            f"  collapse: dropping classes "
+            f"{sorted(names[i] for i in drop_ids)}; remapping the rest -> 0"
+        )
+    else:
+        print("  collapse: remapping all classes -> 0")
+
+    rewritten = dropped = 0
+    for split in ("train", "valid", "test"):
+        lbl_dir = root / split / "labels"
+        if not lbl_dir.exists():
+            continue
+        for txt in lbl_dir.glob("*.txt"):
+            out_lines = []
+            for line in txt.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split()
+                try:
+                    cid = int(float(parts[0]))
+                except (ValueError, IndexError):
+                    continue
+                if cid in drop_ids:
+                    dropped += 1
+                    continue
+                parts[0] = "0"
+                out_lines.append(" ".join(parts))
+            txt.write_text("\n".join(out_lines) + ("\n" if out_lines else ""))
+            rewritten += 1
+    return rewritten, dropped
+
+
 def merge_into(src_root: Path, dst_root: Path, prefix: str) -> int:
     """Copy every image+label pair from src_root/{split} into dst_root/{split},
     renaming to `<prefix>__<original>` so pools from different sources never

@@ -23,6 +23,10 @@ Env:
   FINETUNE_SOURCE    one spec, or empty.
   ROBOFLOW_API_KEY   required if any spec is roboflow:
   HF_TOKEN           required if any spec is hf:
+  POOL_DROP_CLASSES  comma-separated class-name fragments removed when folding a
+                     multi-class export down to the single 'bullet-hole' class
+                     (default: contour,target,sticker,shell,casing,hull). Every
+                     surviving box is remapped to class 0.
   Legacy single-source fallback: DATASET_SOURCE (roboflow|hf), ROBOFLOW_WORKSPACE,
   ROBOFLOW_PROJECT, ROBOFLOW_VERSION, HF_DATASET_REPO.
 """
@@ -36,12 +40,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sources import (  # noqa: E402
+    collapse_labels,
     count_images,
     download_source,
     merge_into,
     normalize_layout,
     write_data_yaml,
 )
+
+# Class-name fragments dropped when collapsing a multi-class export to the
+# single 'bullet-hole' class. Override with POOL_DROP_CLASSES (comma-separated).
+DEFAULT_DROP_CLASSES = "contour,target,sticker,shell,casing,hull"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
@@ -65,8 +74,10 @@ def legacy_pretrain_spec() -> str:
     return f"roboflow:{ws}/{proj}/{ver}"
 
 
-def build(dataset_dir: Path, specs: list[str], label: str) -> int:
-    """Download each spec, normalize, merge into dataset_dir. Returns image count."""
+def build(dataset_dir: Path, specs: list[str], label: str,
+          drop_classes: "list[str] | None" = None) -> int:
+    """Download each spec, normalize, collapse to a single class, merge into
+    dataset_dir. Returns image count."""
     if dataset_dir.exists():
         # fresh each run so re-launches are deterministic
         import shutil
@@ -79,6 +90,12 @@ def build(dataset_dir: Path, specs: list[str], label: str) -> int:
         with tempfile.TemporaryDirectory(prefix=f"rc_{label}_{i}_") as tmp:
             raw = download_source(spec, Path(tmp))
             normalize_layout(raw)
+            # Every source feeds the single-class 'bullet-hole' pool
+            # (write_data_yaml hardcodes nc:1), so fold any multi-class export
+            # down to class 0 and drop obvious non-hole classes.
+            _, boxes_dropped = collapse_labels(raw, drop_classes)
+            if boxes_dropped:
+                print(f"[{label}]   dropped {boxes_dropped} non-hole boxes")
             n = merge_into(raw, dataset_dir, prefix=f"s{i}")
             print(f"[{label}]   merged {n} images")
 
@@ -103,8 +120,13 @@ def main() -> int:
         else [legacy_pretrain_spec()]
     )
 
+    drop_classes = [
+        s for s in os.environ.get("POOL_DROP_CLASSES", DEFAULT_DROP_CLASSES).split(",")
+        if s.strip()
+    ]
+
     print("=== pretrain pool ===")
-    build(POOL_DIR, pretrain_specs, "pool")
+    build(POOL_DIR, pretrain_specs, "pool", drop_classes=drop_classes)
     write_data_yaml(DATA_DIR / "pool.yaml", POOL_DIR)
     # keep the legacy filename working as an alias for single-stage callers
     write_data_yaml(DATA_DIR / "bullet-hole.yaml", POOL_DIR)
@@ -113,7 +135,7 @@ def main() -> int:
     finetune_spec = os.environ.get("FINETUNE_SOURCE", "").strip()
     if finetune_spec:
         print("\n=== fine-tune set ===")
-        build(FINETUNE_DIR, [finetune_spec], "finetune")
+        build(FINETUNE_DIR, [finetune_spec], "finetune", drop_classes=drop_classes)
         write_data_yaml(DATA_DIR / "finetune.yaml", FINETUNE_DIR)
         print(f"[finetune] wrote {DATA_DIR / 'finetune.yaml'}")
     else:

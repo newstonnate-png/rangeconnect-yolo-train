@@ -16,8 +16,9 @@ So dataset choice only affects **hole localization**, and no public dataset
 matches *this silhouette target, through this camera's zoom lens, at this lane
 distance*. Hence:
 
-1. **Phase 1 — pretrain** on `datasets/pool/`: your Roboflow set plus one or two
-   free public bullet-hole sets, merged. A robust generic prior.
+1. **Phase 1 — pretrain** on `datasets/pool/`: four free public (CC BY 4.0)
+   Roboflow Universe bullet-hole sets, merged and folded to one class. A robust
+   generic prior. See `Template/rangeconnect-yolo-train.md` for the list.
 2. **Phase 2 — fine-tune** on `datasets/finetune/`: 200–400 real zoom-lens frames
    on the printed target (captured with `GunRangeApp3/camera_view.py`, labelled
    in Roboflow as a new dataset version). Fewer epochs, lower LR, frozen
@@ -34,10 +35,10 @@ distance*. Hence:
 
 ## Run a training job
 
-1. Edit `Template/rangeconnect-yolo-train.md`: set the GitHub repo URL in the
-   on-start line; fill real values for `ROBOFLOW_API_KEY`, the version numbers in
-   `PRETRAIN_SOURCES`, `HF_TOKEN`, `HF_MODEL_REPO`, `JUPYTER_TOKEN`. Leave
-   `FINETUNE_SOURCE=` empty for the first run.
+1. Fill real values for `ROBOFLOW_API_KEY`, `HF_TOKEN`, `HF_MODEL_REPO`,
+   `JUPYTER_TOKEN` (kept in `.env`, gitignored) into the
+   `Template/rangeconnect-yolo-train.md` one-liner. `PRETRAIN_SOURCES` is already
+   the public pool; leave `FINETUNE_SOURCE=` empty for the first run.
 2. Create the Vast instance: image `ultralytics/ultralytics:latest`, launch mode
    **docker ENTRYPOINT**, 40 GB disk, one RTX 3090/5090. Paste the on-start
    script and the env one-liner.
